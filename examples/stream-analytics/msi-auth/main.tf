@@ -8,6 +8,14 @@ resource "azurerm_resource_group" "example" {
 }
 
 ### Stream Analytics Job ###
+resource "azurerm_storage_account" "job_storage_account" {
+  name                     = "${var.prefix}jobstoracc"
+  resource_group_name      = azurerm_resource_group.example.name
+  location                 = azurerm_resource_group.example.location
+  account_tier             = "Standard"
+  account_replication_type = "LRS"
+}
+
 resource "azurerm_stream_analytics_job" "example" {
   name                                     = "${var.prefix}-example-job"
   resource_group_name                      = azurerm_resource_group.example.name
@@ -19,9 +27,15 @@ resource "azurerm_stream_analytics_job" "example" {
   events_out_of_order_policy               = "Adjust"
   output_error_policy                      = "Drop"
   streaming_units                          = 3
+  content_storage_policy                   = "JobStorageAccount"
 
   identity {
     type = "SystemAssigned"
+  }
+
+  job_storage_account {
+    account_name = azurerm_storage_account.job_storage_account.name
+    account_key  = azurerm_storage_account.job_storage_account.primary_access_key
   }
 
   tags = {
@@ -107,4 +121,37 @@ resource "azurerm_stream_analytics_stream_input_eventhub_v2" "example" {
     type     = "Json"
     encoding = "UTF8"
   }
+}
+
+### REFERENCE INPUT: SQL Database ###
+resource "azurerm_mssql_server" "example" {
+  name                         = "${var.prefix}-example-sqlserver"
+  resource_group_name          = azurerm_resource_group.example.name
+  location                     = azurerm_resource_group.example.location
+  version                      = "12.0"
+  administrator_login          = "mradministrator"
+  administrator_login_password = "thisIsDog11"
+}
+
+resource "azurerm_mssql_database" "example" {
+  name        = "example-db"
+  server_id   = azurerm_mssql_server.example.id
+  sample_name = "AdventureWorksLT"
+}
+
+resource "azurerm_stream_analytics_reference_input_mssql" "example" {
+  name                      = "${var.prefix}-sql-reference-input"
+  stream_analytics_job_name = azurerm_stream_analytics_job.example.name
+  resource_group_name       = azurerm_stream_analytics_job.example.resource_group_name
+  server                    = azurerm_mssql_server.example.fully_qualified_domain_name
+  database                  = azurerm_mssql_database.example.name
+  username                  = "mradministrator"
+  password                  = "thisIsDog11"
+  refresh_type              = "RefreshPeriodicallyWithFull"
+  refresh_interval_duration = "00:20:00"
+  full_snapshot_query       = <<QUERY
+    SELECT *
+    INTO [YourOutputAlias]
+    FROM [YourInputAlias]
+QUERY
 }

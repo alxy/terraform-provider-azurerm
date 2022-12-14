@@ -6,3 +6,4 @@ This example provisions a Stream Analytics job that uses [MSI authentication](ht
 
 - `azurerm_stream_analytics_reference_input_blob`
 - `azurerm_stream_analytics_stream_input_eventhub_v2`
+- `azurerm_stream_analytics_reference_input_mssql`
