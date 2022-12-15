@@ -133,6 +133,13 @@ resource "azurerm_mssql_server" "example" {
   administrator_login_password = "thisIsDog11"
 }
 
+resource "azurerm_mssql_firewall_rule" "example" {
+  name                = "AllowAzure"
+  server_id           = azurerm_mssql_server.example.id
+  start_ip_address    = "0.0.0.0"
+  end_ip_address      = "0.0.0.0"
+}
+
 resource "azurerm_mssql_database" "example" {
   name        = "example-db"
   server_id   = azurerm_mssql_server.example.id
@@ -154,4 +161,57 @@ resource "azurerm_stream_analytics_reference_input_mssql" "example" {
     INTO [YourOutputAlias]
     FROM [YourInputAlias]
 QUERY
+}
+
+### OUTPUT: Blob storage/ADLS Gen2 ###
+resource "azurerm_storage_container" "example_output" {
+  name                  = "${var.prefix}exampleoutput"
+  storage_account_name  = azurerm_storage_account.example.name
+  container_access_type = "private"
+}
+
+resource "azurerm_stream_analytics_output_blob" "example" {
+  name                      = "${var.prefix}-blob-output"
+  stream_analytics_job_name = azurerm_stream_analytics_job.example.name
+  resource_group_name       = azurerm_stream_analytics_job.example.resource_group_name
+  storage_account_name      = azurerm_storage_account.example.name
+  storage_container_name    = azurerm_storage_container.example_output.name
+  path_pattern              = "some-pattern"
+  date_format               = "yyyy-MM-dd"
+  time_format               = "HH"
+  authentication_mode       = "Msi"
+
+  serialization {
+    type            = "Csv"
+    encoding        = "UTF8"
+    field_delimiter = ","
+  }
+}
+
+### OUPUT: Event Hub ###
+resource "azurerm_eventhub" "example_output" {
+  name                = "${var.prefix}-example-eventhub-output"
+  namespace_name      = azurerm_eventhub_namespace.example.name
+  resource_group_name = azurerm_resource_group.example.name
+  partition_count     = 2
+  message_retention   = 1
+}
+
+resource "azurerm_role_assignment" "example_eventhub_output" {
+  scope                = azurerm_eventhub.example_output.id
+  role_definition_name = "Azure Event Hubs Data sender"
+  principal_id         = azurerm_stream_analytics_job.example.identity[0].principal_id
+}
+
+resource "azurerm_stream_analytics_output_eventhub" "example" {
+  name                      = "${var.prefix}-eventhub-stream-output"
+  stream_analytics_job_name = azurerm_stream_analytics_job.example.name
+  resource_group_name       = azurerm_stream_analytics_job.example.resource_group_name
+  eventhub_name             = azurerm_eventhub.example_output.name
+  servicebus_namespace      = azurerm_eventhub_namespace.example.name
+  authentication_mode       = "Msi"
+
+  serialization {
+    type = "Avro"
+  }
 }
